@@ -1,0 +1,47 @@
+---
+description: Thriven Step Sequencer – project context, stack, conventions, language rules
+globs:
+alwaysApply: true
+---
+
+# Project: Thriven Step Sequencer
+
+A browser-based step sequencer / beat-maker (Milo-style) for Tekk / RaveTekk / Deep Tekk
+production. Built by SiCKaRiM (Karim), Frankfurt. Will later be packaged as an offline
+desktop app via Tauri.
+
+## Communication
+- Talk to me (the user) in GERMAN. Be direct, factual, concise. No filler, no flattery.
+- All CODE, COMMENTS, variable names, commit messages: ENGLISH.
+- I am a self-taught developer (JS/TS/Python). Explain non-obvious decisions briefly so I learn.
+
+## Tech Stack
+- Vite + Vanilla TypeScript (NO React/framework for now — keep it lean)
+- Tone.js for all audio: Tone.Transport, Tone.Sequence, synths, effects
+- Web MIDI API for live output to hardware (Akai MPD24)
+- Standard MIDI File export (hand-written or midi-writer-js)
+- Tauri (Rust) only in a later phase — do not add it yet
+
+## Code Conventions
+- TypeScript strict mode. Never use `any` — use `unknown` or a defined type.
+- Named exports only, no default exports.
+- Small focused modules under src/{audio,sequencer,ui,midi}/.
+- Arrow-function consts for handlers. Async code must handle errors (try/catch).
+- No external dependency unless necessary — budget is 0€, offline-first, free/self-hosted only.
+- Do not rely on localStorage in artifacts/preview; use in-memory state.
+
+## Domain Model (keep consistent)
+- Pattern: tracks[] × steps[16]; each step = { on, prob, tie }.
+- prob = 50% trigger chance. tie = roll (extra hit at +1/32).
+- Patches A–J = 10 pattern slots, reused as song sections in the SC (Song Chain) view.
+- Three views: SEQ (sequencer), MIX (16-ch mixer), SC (arrangement).
+- Default tempo 162 BPM. Tekk kick on steps 1,5,9,13 (0-indexed 0,4,8,12).
+
+## Aesthetic
+- Dark UI, neon accents (cyan #00f0ff, magenta #ff2bd6) on near-black (#07080c).
+- Display font: Chakra Petch. Mono body: JetBrains Mono. No generic fonts (Inter/Arial).
+
+## Output Rules
+- Code must be copy-paste-ready, complete, no placeholders like "// TODO rest here".
+- When unsure about a Tone.js API, say so — do not invent method names.
+- Use the reference/thriven-step-seq.html as a behavioral reference, but write clean modular TS.

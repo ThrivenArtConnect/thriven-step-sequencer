@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>THRIVEN · Step Sequencer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+<style>
+  :root{
+    --bg:#07080c; --panel:#0d1018; --line:#1c2230;
+    --cyan:#00f0ff; --mag:#ff2bd6; --txt:#c8d2e0; --dim:#5a6678;
+    --on:#00f0ff; --prob:#ffae00; --tie:#ff2bd6;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:
+      radial-gradient(900px 500px at 80% -10%, rgba(255,43,214,.08), transparent),
+      radial-gradient(900px 500px at -10% 110%, rgba(0,240,255,.08), transparent),
+      var(--bg);
+    color:var(--txt); font-family:'JetBrains Mono',monospace; min-height:100vh;
+    padding:24px; letter-spacing:.02em;
+  }
+  h1{font-family:'Chakra Petch',sans-serif; font-size:22px; letter-spacing:.18em;
+     text-transform:uppercase; color:#fff;}
+  h1 span{color:var(--cyan); text-shadow:0 0 12px var(--cyan);}
+  .sub{color:var(--dim); font-size:11px; margin:4px 0 20px; max-width:680px; line-height:1.6}
+  .transport{display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-bottom:20px;
+    background:var(--panel); border:1px solid var(--line); padding:14px 16px; border-radius:10px}
+  button{font-family:'Chakra Petch',sans-serif; background:transparent; color:var(--txt);
+    border:1px solid var(--line); padding:9px 16px; border-radius:6px; cursor:pointer;
+    letter-spacing:.1em; text-transform:uppercase; font-size:12px; transition:.15s}
+  button:hover{border-color:var(--cyan); color:var(--cyan); box-shadow:0 0 10px rgba(0,240,255,.25)}
+  button.play{border-color:var(--cyan); color:var(--cyan)}
+  button.play.active{background:var(--cyan); color:#000; box-shadow:0 0 16px var(--cyan)}
+  button.mid{border-color:var(--mag); color:var(--mag)}
+  button.mid:hover{box-shadow:0 0 10px rgba(255,43,214,.3)}
+  label{font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.1em}
+  input[type=number]{width:64px; background:#000; color:var(--cyan); border:1px solid var(--line);
+    padding:6px; border-radius:5px; font-family:'JetBrains Mono'; font-size:13px}
+  input[type=range]{accent-color:var(--cyan)}
+  .grid{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px;
+    overflow-x:auto}
+  .row{display:flex; align-items:center; gap:6px; margin-bottom:8px}
+  .row:last-child{margin-bottom:0}
+  .name{width:64px; font-family:'Chakra Petch'; font-size:12px; text-transform:uppercase;
+    letter-spacing:.08em; flex-shrink:0}
+  .mute{width:22px; height:22px; padding:0; font-size:10px; flex-shrink:0; line-height:1}
+  .mute.off{opacity:.35}
+  .vol{width:60px; flex-shrink:0}
+  .steps{display:flex; gap:5px}
+  .cell{width:34px; height:34px; border:1px solid var(--line); border-radius:5px;
+    background:#070a10; cursor:pointer; flex-shrink:0; position:relative; transition:.08s}
+  .cell:nth-child(4n+1){border-left:2px solid #2a3346}
+  .cell.on{background:var(--on); box-shadow:0 0 10px var(--on)}
+  .cell.prob{background:var(--prob); box-shadow:0 0 10px var(--prob)}
+  .cell.tie{background:var(--tie); box-shadow:0 0 10px var(--tie)}
+  .cell.playhead{outline:2px solid #fff; outline-offset:1px}
+  .legend{margin-top:16px; font-size:11px; color:var(--dim); line-height:1.8}
+  .legend b{color:var(--txt); font-weight:700}
+  .dot{display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:middle; margin:0 4px}
+</style>
+</head>
+<body>
+  <h1>Thriven · <span>Step Sequencer</span></h1>
+  <p class="sub">Proof-of-Concept Milo-Style Sequencer · Tone.js · 16 Steps · läuft 100% offline im Browser.
+     Klick = An/Aus · Shift+Klick = Probability 50% · Alt+Klick = Tie/Roll. Default 162 BPM.</p>
+
+  <div class="transport">
+    <button id="play" class="play">▶ Play</button>
+    <label>BPM <input type="number" id="bpm" value="162" min="80" max="220"></label>
+    <label>Swing <input type="range" id="swing" min="0" max="0.5" step="0.01" value="0"></label>
+    <button id="midi" class="mid">⬇ MIDI Export</button>
+    <button id="clear">Clear</button>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="legend">
+    <span class="dot" style="background:var(--on)"></span><b>On</b> &nbsp;
+    <span class="dot" style="background:var(--prob)"></span><b>Probability 50%</b> (Shift+Klick) &nbsp;
+    <span class="dot" style="background:var(--tie)"></span><b>Tie / Roll</b> (Alt+Klick)<br>
+    Tekk-Logik: Kick auf 1·5·9·13 · Offbeat-OpenHat auf 3·7·11·15 · Clap-Backbeat auf 5·13 · Tie auf 14·15·16 für Roll.
+  </div>
+
+<script>
+const STEPS = 16;
+// Track-Definition: name, midiNote, channel, color, synth-Factory
+const tracks = [
+  { name:"Kick",  note:36, ch:9, build:()=>new Tone.MembraneSynth({pitchDecay:.03, octaves:6, envelope:{attack:.001,decay:.32,sustain:0}}).toDestination(),
+    trig:(s,t)=>s.triggerAttackRelease("C1","8n",t) },
+  { name:"Clap",  note:39, ch:9, build:()=>{const n=new Tone.NoiseSynth({noise:{type:"white"},envelope:{attack:.001,decay:.18,sustain:0}});const f=new Tone.Filter(1200,"highpass").toDestination();n.connect(f);return n;},
+    trig:(s,t)=>s.triggerAttackRelease("16n",t) },
+  { name:"C-Hat", note:42, ch:9, build:()=>{const n=new Tone.NoiseSynth({noise:{type:"white"},envelope:{attack:.001,decay:.04,sustain:0}});const f=new Tone.Filter(8000,"highpass").toDestination();n.connect(f);return n;},
+    trig:(s,t)=>s.triggerAttackRelease("32n",t) },
+  { name:"O-Hat", note:46, ch:9, build:()=>{const n=new Tone.NoiseSynth({noise:{type:"white"},envelope:{attack:.001,decay:.22,sustain:0}});const f=new Tone.Filter(7000,"highpass").toDestination();n.connect(f);return n;},
+    trig:(s,t)=>s.triggerAttackRelease("16n",t) },
+  { name:"Bass",  note:36, ch:0, build:()=>new Tone.MonoSynth({oscillator:{type:"sawtooth"},filter:{Q:4},envelope:{attack:.005,decay:.2,sustain:.2,release:.1},filterEnvelope:{attack:.005,decay:.1,baseFrequency:120,octaves:3}}).toDestination(),
+    trig:(s,t)=>s.triggerAttackRelease("C2","16n",t) },
+];
+
+// State: pattern[trackIndex][step] = {on, prob, tie}
+const pattern = tracks.map(()=>Array.from({length:STEPS},()=>({on:false,prob:false,tie:false})));
+const muted = tracks.map(()=>false);
+const synths = tracks.map(t=>t.build());
+const vols = tracks.map(t=>{const v=new Tone.Volume(0);return v;}); // attached via track output (kept simple: gain on synth)
+
+// --- UI build ---
+const grid = document.getElementById("grid");
+tracks.forEach((t,ti)=>{
+  const row = document.createElement("div"); row.className="row";
+  const name = document.createElement("div"); name.className="name"; name.textContent=t.name; row.appendChild(name);
+  const mute = document.createElement("button"); mute.className="mute"; mute.textContent="M";
+  mute.onclick=()=>{muted[ti]=!muted[ti]; mute.classList.toggle("off",muted[ti]);}; row.appendChild(mute);
+  const vol = document.createElement("input"); vol.type="range"; vol.className="vol";
+  vol.min=-30; vol.max=6; vol.value=0;
+  vol.oninput=()=>{ synths[ti].volume.value = parseFloat(vol.value); }; row.appendChild(vol);
+  const steps = document.createElement("div"); steps.className="steps";
+  pattern[ti].forEach((cell,si)=>{
+    const c=document.createElement("div"); c.className="cell"; c.dataset.t=ti; c.dataset.s=si;
+    c.onclick=(e)=>{
+      if(e.altKey){ cell.tie=!cell.tie; cell.on=cell.on||cell.tie; }
+      else if(e.shiftKey){ cell.prob=!cell.prob; cell.on=cell.on||cell.prob; }
+      else { cell.on=!cell.on; if(!cell.on){cell.prob=false;cell.tie=false;} }
+      paint(c,cell);
+    };
+    steps.appendChild(c);
+  });
+  row.appendChild(steps); grid.appendChild(row);
+});
+function paint(c,cell){
+  c.classList.remove("on","prob","tie");
+  if(cell.tie&&cell.on) c.classList.add("tie");
+  else if(cell.prob&&cell.on) c.classList.add("prob");
+  else if(cell.on) c.classList.add("on");
+}
+
+// --- Sequencer ---
+let current=-1;
+const seq = new Tone.Sequence((time,step)=>{
+  // playhead
+  Tone.Draw.schedule(()=>{
+    document.querySelectorAll(".cell.playhead").forEach(e=>e.classList.remove("playhead"));
+    document.querySelectorAll(`.cell[data-s="${step}"]`).forEach(e=>e.classList.add("playhead"));
+  },time);
+  tracks.forEach((t,ti)=>{
+    if(muted[ti]) return;
+    const cell=pattern[ti][step];
+    if(!cell.on) return;
+    if(cell.prob && Math.random()<0.5) return;
+    t.trig(synths[ti],time);
+    if(cell.tie){ t.trig(synths[ti], time+Tone.Time("32n").toSeconds()); } // Roll
+  });
+},[...Array(STEPS).keys()],"16n");
+
+// --- Controls ---
+const playBtn=document.getElementById("play");
+playBtn.onclick=async()=>{
+  await Tone.start();
+  if(Tone.Transport.state==="started"){
+    Tone.Transport.stop(); seq.stop(); playBtn.classList.remove("active"); playBtn.textContent="▶ Play";
+    document.querySelectorAll(".cell.playhead").forEach(e=>e.classList.remove("playhead"));
+  } else {
+    seq.start(0); Tone.Transport.start(); playBtn.classList.add("active"); playBtn.textContent="■ Stop";
+  }
+};
+document.getElementById("bpm").oninput=e=>Tone.Transport.bpm.value=parseFloat(e.target.value)||162;
+Tone.Transport.bpm.value=162;
+document.getElementById("swing").oninput=e=>{Tone.Transport.swing=parseFloat(e.target.value);Tone.Transport.swingSubdivision="16n";};
+document.getElementById("clear").onclick=()=>{
+  pattern.forEach(r=>r.forEach(c=>{c.on=false;c.prob=false;c.tie=false;}));
+  document.querySelectorAll(".cell").forEach(c=>c.classList.remove("on","prob","tie"));
+};
+
+// --- MIDI Export (Standard MIDI File, Format 0) ---
+function varLen(n){const b=[n&0x7f];n>>=7;while(n>0){b.unshift((n&0x7f)|0x80);n>>=7;}return b;}
+function exportMidi(){
+  const PPQ=96, stepTicks=PPQ/4; // 16th note
+  const events=[]; // {tick,data:[...]}
+  pattern.forEach((row,ti)=>{
+    const ch=tracks[ti].ch, note=tracks[ti].note;
+    row.forEach((cell,si)=>{
+      if(!cell.on) return;
+      const on=si*stepTicks;
+      events.push({tick:on, data:[0x90|ch, note, 100]});
+      events.push({tick:on+stepTicks-2, data:[0x80|ch, note, 0]});
+      if(cell.tie){
+        const r=on+stepTicks/2;
+        events.push({tick:r, data:[0x90|ch, note, 90]});
+        events.push({tick:r+stepTicks/2-2, data:[0x80|ch, note, 0]});
+      }
+    });
+  });
+  events.sort((a,b)=>a.tick-b.tick || (a.data[0]&0xf0)-(b.data[0]&0xf0));
+  const trackBytes=[];
+  // Tempo meta
+  const us=Math.round(60000000/(Tone.Transport.bpm.value));
+  trackBytes.push(0x00,0xff,0x51,0x03,(us>>16)&0xff,(us>>8)&0xff,us&0xff);
+  let last=0;
+  events.forEach(ev=>{ trackBytes.push(...varLen(ev.tick-last), ...ev.data); last=ev.tick; });
+  trackBytes.push(0x00,0xff,0x2f,0x00); // end of track
+  const len=trackBytes.length;
+  const bytes=[
+    0x4d,0x54,0x68,0x64, 0,0,0,6, 0,0, 0,1, (PPQ>>8)&0xff,PPQ&0xff, // header, format0, 1 track
+    0x4d,0x54,0x72,0x6b, (len>>24)&0xff,(len>>16)&0xff,(len>>8)&0xff,len&0xff,
+    ...trackBytes
+  ];
+  const blob=new Blob([new Uint8Array(bytes)],{type:"audio/midi"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download="thriven-pattern.mid"; a.click();
+}
+document.getElementById("midi").onclick=exportMidi;
+
+// Default-Pattern: Tekk-Four-on-the-floor als Startpunkt
+[0,4,8,12].forEach(s=>pattern[0][s].on=true);   // Kick
+[4,12].forEach(s=>pattern[1][s].on=true);        // Clap
+[2,6,10,14].forEach(s=>pattern[3][s].on=true);   // Open hat offbeat
+for(let s=0;s<16;s++) pattern[2][s].on=true;     // Closed hats
+document.querySelectorAll(".cell").forEach(c=>paint(c,pattern[+c.dataset.t][+c.dataset.s]));
+</script>
+</body>
+</html>
