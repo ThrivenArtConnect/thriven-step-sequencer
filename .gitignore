@@ -1,0 +1,11 @@
+# Root-Dateien (Prototyp-Hygiene)
+*.mid
+*.json
+*.html
+
+# Node/IDE
+node_modules/
+.vscode/
+.idea/
+*.log
+.DS_Store
